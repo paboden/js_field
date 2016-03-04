@@ -1,0 +1,26 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_field_schema().
+ */
+function js_field_field_schema($field) {
+  return array(
+    'columns' => array(
+      'js' => array(
+        'description' => 'Snippet of javascript',
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+      ),
+      'scope' => array(
+        'description' => 'The placement of this script on the page. 0 = header, 1 = footer.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+  );
+}

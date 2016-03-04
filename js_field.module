@@ -1,0 +1,240 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_field_info().
+ */
+function js_field_field_info() {
+  return array(
+    'js_field' => array(
+      'label' => t('Javascript'),
+      'description' => t('This field stores javascript and scope information in the database.'),
+      'default_widget' => 'js_field',
+      'default_formatter' => 'js_field',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function js_field_field_widget_info() {
+  return array(
+    'js_field_textfield' => array(
+      'label' => t('Javascript snippet'),
+      'field types' => array('js_field'),
+      'settings' => array(
+        'js_field_editor_theme' => 'solarized_dark',
+        'js_field_enable_online_validation' => FALSE,
+      ),
+      'weight' => 0,
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function js_field_field_widget_settings_form($field, $instance) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+  $options = array(
+    'none' => t('None'),
+    'solarized_dark' => t('Solarized Dark'),
+    'solarized' => t('Solarized'),
+    'ambiance' => t('Ambiance'),
+    'clouds' => t('Clouds'),
+    'dreamweaver' => t('Dreamweaver'),
+    'monokai' => t('Monokai'),
+    'xcode' => t('Xcode'),
+  );
+
+  $element['js_field_editor_theme'] = array(
+    '#type' => 'select',
+    '#options' => $options,
+    '#title' => t('Select editor theme'),
+    '#description' => t("Select the editor's theme style for the javascript field"),
+    '#default_value' => isset($settings['js_field_editor_theme']) ? $settings['js_field_editor_theme'] : 'solarized_dark',
+  );
+
+  $element['js_field_enable_online_validation'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable W3Validation'),
+    '#description' => t('This will enable a remote validation service to scan the javascript and report errors with the javascript before allowing it to be saved.'),
+    '#default_value' => isset($settings['js_field_enable_online_validation']) ? $settings['js_field_enable_online_validation'] : FALSE,
+  );
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function js_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+  // Defaults
+  $defaults = array(
+    'js' => '',
+    'scope' => 'header',
+  );
+
+  // Bring in the javascript that sets the ace editor and sets the editor theme.
+  if (isset($settings['js_field_editor_theme'])) {
+    $editor_theme = $settings['js_field_editor_theme'];
+    if ($editor_theme !== 'none') {
+      drupal_add_js('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', 'external');
+      drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
+      drupal_add_js(array('js_field' => array('editorTheme' => $editor_theme)), 'setting');
+    }
+  }
+
+  // If only one item, place it in a fieldset to keep it organized.
+  if ($field['cardinality'] == 1) {
+    $element['#type'] = 'fieldset';
+  }
+
+  // Items specific to snippet widget.
+  $element['js'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Javascript snippet'),
+    '#row' => 10,
+    '#attributes' => array(
+      'data-ace-editor' => 'data-ace-editor-js',
+    ),
+    '#default_value' => isset($items[$delta]['js']) ? ($items[$delta]['js']) : $defaults['js'],
+  );
+
+
+  // Basic html style tag media defaults.
+  $options = array(
+    0 => t('Header'),
+    1 => t('Footer'),
+  );
+
+  $element['scope'] = array(
+    '#type' => 'select',
+    '#options' => $options,
+    '#title' => t('Scope placement'),
+    '#description' => t('Place this javascript in the header or footer of the page.'),
+    '#default_value' => isset($items[$delta]['scope']) ? $items[$delta]['scope'] : $defaults['scope'],
+  );
+
+  return $element;
+}
+
+/**
+ * Implementation of hook_field_is_empty().
+ */
+function js_field_field_is_empty($item, $field) {
+  if (empty($item['js'])) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Implements hook_field_validate().
+ */
+function js_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+  global $language;
+
+  // For each item, try to send it to the validator
+  foreach($items as $delta => $item) {
+    if (!empty($item['js'])) {
+
+    }
+  }
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function js_field_field_formatter_info() {
+  return array(
+    'js_field' => array(
+      'label' => t('Javascript: Embedded'),
+      'field types' => array('js_field'),
+    ),
+    'js_field_plain' => array(
+      'label' => t('Javascript: Plain'),
+      'field types' => array('js_field'),
+    ),
+    'js_field_styled' => array(
+      'label' => t('Javascript: Styled'),
+      'field types' => array('js_field'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function js_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, &$items, $display) {
+  $settings = $display['settings'];
+  $element = array();
+
+  switch ($display['type']) {
+    case 'js_field':
+      foreach ($items as $key => $value) {
+        $data = $value['js'];
+        $scope = $value['scope'] == 0 ? 'header' : 'footer';
+        $options = array(
+          'type' => 'inline',
+          'scope' => $scope,
+          'group' => JS_THEME,
+          'preprocess' => FALSE,
+          'weight' => '9999',
+          'attributes' => array(
+            'class' => 'js-field',
+          ),
+        );
+        drupal_add_js($data, $options);
+      }
+      break;
+    case 'js_field_plain':
+      foreach ($items as $key => $value) {
+        $element[$key] = array(
+          '#type' => 'markup',
+          '#markup' => '<small><pre>' . $value['js'] . '</pre></small>',
+        );
+      }
+      break;
+    case 'js_field_styled':
+      $instance_settings = $instance['widget']['settings'];
+      $editor_theme = $instance_settings['js_field_editor_theme'];
+      if ($editor_theme !== 'none') {
+        drupal_add_js('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', 'external');
+        drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field_formatter_display.js');
+        drupal_add_js(array('js_field' => array('readOnlyTheme' => $editor_theme)), 'setting');
+        foreach ($items as $key => $value) {
+          $element[$key] = array(
+            '#type' => 'textarea',
+            '#value' => $value['js'],
+            '#row' => 10,
+            '#attributes' => array(
+              'data-ace-editor-js' => 'data-ace-editor-js',
+            ),
+          );
+        }
+      }
+      else {
+        foreach ($items as $key => $value) {
+          $element[$key] = array(
+            '#type' => 'markup',
+            '#markup' => '<small><pre>' . $value['js'] . '</pre></small>',
+          );
+        }
+      }
+      break;
+  }
+
+  return $element;
+}

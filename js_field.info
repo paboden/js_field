@@ -1,0 +1,4 @@
+name = Javascript Field
+description = Provides a Javascript input field for inputing custom javascript.
+core = 7.x
+dependencies[] = field
