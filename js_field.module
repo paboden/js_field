@@ -87,7 +87,6 @@ function js_field_field_widget_form(&$form, &$form_state, $field, $instance, $la
   if (isset($settings['js_field_editor_theme'])) {
     $editor_theme = $settings['js_field_editor_theme'];
     if ($editor_theme !== 'none') {
-      drupal_add_js('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', 'external');
       drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
       drupal_add_js(array('js_field' => array('editorTheme' => $editor_theme)), 'setting');
     }
@@ -104,7 +103,7 @@ function js_field_field_widget_form(&$form, &$form_state, $field, $instance, $la
     '#title' => t('Javascript snippet'),
     '#row' => 10,
     '#attributes' => array(
-      'data-ace-editor' => 'data-ace-editor-js',
+      'data-ace-editor-js' => 'data-ace-editor-js',
     ),
     '#default_value' => isset($items[$delta]['js']) ? ($items[$delta]['js']) : $defaults['js'],
   );
@@ -211,7 +210,6 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
       $instance_settings = $instance['widget']['settings'];
       $editor_theme = $instance_settings['js_field_editor_theme'];
       if ($editor_theme !== 'none') {
-        drupal_add_js('//cdn.jsdelivr.net/ace/1.1.6/noconflict/ace.js', 'external');
         drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field_formatter_display.js');
         drupal_add_js(array('js_field' => array('readOnlyTheme' => $editor_theme)), 'setting');
         foreach ($items as $key => $value) {
