@@ -4,6 +4,18 @@
  */
 
 /**
+ * Implements hook_permission().
+ */
+function js_field_permission() {
+  return array(
+    'view js field debug' => array(
+      'title' => t('View JS field debug'),
+      'description' => t('When debug enabled for a js field, messaging will display for user.'),
+    ),
+  );
+}
+
+/**
  * Implements hook_field_info().
  */
 function js_field_field_info() {
@@ -27,7 +39,6 @@ function js_field_field_widget_info() {
       'field types' => array('js_field'),
       'settings' => array(
         'js_field_editor_theme' => 'solarized_dark',
-        'js_field_enable_online_validation' => FALSE,
       ),
       'weight' => 0,
     ),
@@ -41,30 +52,12 @@ function js_field_field_widget_settings_form($field, $instance) {
   $widget = $instance['widget'];
   $settings = $widget['settings'];
 
-  $options = array(
-    'none' => t('None'),
-    'solarized_dark' => t('Solarized Dark'),
-    'solarized' => t('Solarized'),
-    'ambiance' => t('Ambiance'),
-    'clouds' => t('Clouds'),
-    'dreamweaver' => t('Dreamweaver'),
-    'monokai' => t('Monokai'),
-    'xcode' => t('Xcode'),
-  );
-
   $element['js_field_editor_theme'] = array(
     '#type' => 'select',
-    '#options' => $options,
+    '#options' => _js_field_list_of_editor_themes(),
     '#title' => t('Select editor theme'),
     '#description' => t("Select the editor's theme style for the javascript field"),
     '#default_value' => isset($settings['js_field_editor_theme']) ? $settings['js_field_editor_theme'] : 'solarized_dark',
-  );
-
-  $element['js_field_enable_online_validation'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Enable W3Validation'),
-    '#description' => t('This will enable a remote validation service to scan the javascript and report errors with the javascript before allowing it to be saved.'),
-    '#default_value' => isset($settings['js_field_enable_online_validation']) ? $settings['js_field_enable_online_validation'] : FALSE,
   );
 
   return $element;
@@ -106,6 +99,7 @@ function js_field_field_widget_form(&$form, &$form_state, $field, $instance, $la
       'data-ace-editor-js' => 'data-ace-editor-js',
     ),
     '#default_value' => isset($items[$delta]['js']) ? ($items[$delta]['js']) : $defaults['js'],
+    '#description' => t('Do not add &lt;script&gt; tags'),
   );
 
 
@@ -149,6 +143,7 @@ function js_field_field_validate($entity_type, $entity, $field, $instance, $lang
   foreach($items as $delta => $item) {
     if (!empty($item['js'])) {
 
+      //@TODO - Figure out a way to validate.
     }
   }
 }
@@ -161,6 +156,9 @@ function js_field_field_formatter_info() {
     'js_field' => array(
       'label' => t('Javascript: Embedded'),
       'field types' => array('js_field'),
+      'settings' => array(
+        'js_field_debug_message' => TRUE,
+      ),
     ),
     'js_field_plain' => array(
       'label' => t('Javascript: Plain'),
@@ -169,8 +167,65 @@ function js_field_field_formatter_info() {
     'js_field_styled' => array(
       'label' => t('Javascript: Styled'),
       'field types' => array('js_field'),
+      'settings' => array(
+        'js_field_display_theme' => 'solarized_dark',
+      ),
     ),
   );
+}
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function js_field_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $element = array();
+
+  if ($display['type'] == 'js_field_styled') {
+    $element['js_field_display_theme'] = array(
+      '#type' => 'select',
+      '#options' => _js_field_list_of_editor_themes(),
+      '#title' => t('Select display theme'),
+      '#description' => t("Select the theme style for the display of this javascript field"),
+      '#default_value' => isset($settings['js_field_display_theme']) ? $settings['js_field_display_theme'] : 'solarized_dark',
+    );
+  }
+
+  // Set up our checkbox to enable/disable javascript field debugging.
+  if ($display['type'] == 'js_field') {
+    $element['js_field_debug_message'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Display dev/debug message'),
+      '#description' => t("This will display a message notifying users that this page has additional javascript coming from a js field.  Users must have permission to view dev/debug messages. "),
+      '#default_value' => isset($settings['js_field_debug_message']) ? $settings['js_field_debug_message'] : TRUE,
+    );
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function js_field_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $summary = '';
+
+  if ($display['type'] == 'js_field_styled') {
+    $summary = t('Display theme: @theme', array('@theme' => $settings['js_field_display_theme']));
+  }
+
+  // Summary of our debug status.
+  if ($display['type'] == 'js_field') {
+    $status = $settings['js_field_debug_message'] == TRUE ? t('Enabled') : t('Disabled');
+    $summary = t('Debug message: @status', array('@status' => $status));
+  }
+
+  return $summary;
 }
 
 /**
@@ -182,27 +237,46 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
 
   switch ($display['type']) {
     case 'js_field':
-      foreach ($items as $key => $value) {
-        $data = $value['js'];
-        $scope = $value['scope'] == 0 ? 'header' : 'footer';
-        $options = array(
-          'type' => 'inline',
-          'scope' => $scope,
-          'group' => JS_THEME,
-          'preprocess' => FALSE,
-          'weight' => '9999',
-          'attributes' => array(
-            'class' => 'js-field',
-          ),
-        );
-        drupal_add_js($data, $options);
+      // Auto kill the embedded javascript display if entity is being viewed
+      // from an admin page. This is to try to preserve sanity. If this field is
+      // needed to work for admin display, than you need to rethink what you are
+      // doing. :)
+      $page_is_admin = path_is_admin(current_path());
+      if (!$page_is_admin) {
+
+        //
+        // Display debug messaging if enabled and to users with permission.
+        // We want dev's to have an easy time figuring out where the odd js
+        // may be coming from.
+        if (!empty($items) && ($settings['js_field_debug_message'] == TRUE) && user_access('view js field debug')) {
+          $debug_message = _js_field_generate_js_comment($entity_type, $entity, $field, $instance, $langcode, $display);
+          drupal_set_message($debug_message);
+        }
+
+        foreach ($items as $key => $value) {
+          // Set the data as the js content.
+          $data = filter_xss($value['js']);
+          // Set the scope (header or footer).
+          $scope = $value['scope'] == 0 ? 'header' : 'footer';
+          $options = array(
+            'type' => 'inline',
+            'scope' => $scope,
+            'group' => JS_THEME,
+            'preprocess' => FALSE,
+            'weight' => '9999',
+            'attributes' => array(
+              'class' => 'js-field',
+            ),
+          );
+          drupal_add_js($data, $options);
+        }
       }
       break;
     case 'js_field_plain':
       foreach ($items as $key => $value) {
         $element[$key] = array(
           '#type' => 'markup',
-          '#markup' => '<small><pre>' . $value['js'] . '</pre></small>',
+          '#markup' => '<small><pre>' . check_plain($value['js']) . '</pre></small>',
         );
       }
       break;
@@ -215,7 +289,7 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
         foreach ($items as $key => $value) {
           $element[$key] = array(
             '#type' => 'textarea',
-            '#value' => $value['js'],
+            '#value' => filter_xss($value['js']),
             '#row' => 10,
             '#attributes' => array(
               'data-ace-editor-js' => 'data-ace-editor-js',
@@ -227,7 +301,7 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
         foreach ($items as $key => $value) {
           $element[$key] = array(
             '#type' => 'markup',
-            '#markup' => '<small><pre>' . $value['js'] . '</pre></small>',
+            '#markup' => '<small><pre>' . check_plain($value['js']) . '</pre></small>',
           );
         }
       }
@@ -235,4 +309,60 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
   }
 
   return $element;
+}
+
+/**
+ * Helper function to generate the Javascript message
+ *
+ * This comment will help users identify where the js is coming from and make
+ * it easier to debug when its embedded.
+ *
+ * @param $entity_type
+ *        string: The type of entity
+ * @param $entity
+ *        array: data about the entity
+ * @param $field
+ *        array: data about the field
+ * @param $instance
+ *        array: data about the field instance
+ * @param $langcode
+ *        string: language of the current state
+ * @param $display
+ *        array: data about the view mode of the entity
+ *
+ * @return string
+ */
+function _js_field_generate_js_comment($entity_type, $entity, $field, $instance, $langcode, $display) {
+  $info = entity_get_info($entity_type);
+  $uri = entity_uri($entity_type, $entity);
+
+  $js_comment = NULL;
+  $js_comment .= t('This page has additional javascript coming from the @entity_label field named "@field_label" (@field_name). ' , array('@field_name' => $field['field_name'], '@field_label' => $instance['label'], '@entity_label' => $info['label']));
+  $js_comment .= t("Visit !url to edit this code." , array('!url' => l($uri['path'] . '/edit', $uri['path'] . '/edit', array())));
+
+  return $js_comment;
+}
+
+/**
+ * Helper function to get list of available ace editor themes
+ *
+ * Use hook_js_field_list_of_editor_themes_alter() and add new themes to the
+ * options. Visit https://github.com/ajaxorg/ace/tree/master/lib/ace/theme to
+ * see the full list of available themes from ace.
+ *
+ * @return array
+ */
+function _js_field_list_of_editor_themes() {
+  $options = array(
+    'none' => t('None'),
+    'solarized_dark' => t('Solarized Dark'),
+    'solarized' => t('Solarized'),
+    'ambiance' => t('Ambiance'),
+    'dreamweaver' => t('Dreamweaver'),
+    'monokai' => t('Monokai'),
+  );
+
+  drupal_alter('js_field_list_of_editor_themes', $options);
+
+  return $options;
 }
