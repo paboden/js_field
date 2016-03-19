@@ -1,26 +1,72 @@
 <?php
 /**
  * @file
+ * Install, update and uninstall functions for the js_field module.
  */
 
 /**
  * Implements hook_field_schema().
  */
 function js_field_field_schema($field) {
+  $columns = array();
+  $indexes = array();
+  $foreign_keys = array();
+
+  switch ($field['type']) {
+    case 'js_field':
+      $columns = array(
+        'js' => array(
+          'description' => 'Snippet of javaScript',
+          'type' => 'text',
+          'size' => 'big',
+          'not null' => FALSE,
+        ),
+        'scope' => array(
+          'description' => 'The placement of this script on the page. 0 = header, 1 = footer.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => FALSE,
+        ),
+      );
+      break;
+
+    case 'js_file':
+      $columns = array(
+        'fid' => array(
+          'description' => 'The {file_managed}.fid being referenced in this field.',
+          'type' => 'int',
+          'not null' => FALSE,
+          'unsigned' => TRUE,
+        ),
+        'scope' => array(
+          'description' => 'The placement of this script on the page. 0 = header, 1 = footer.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => FALSE,
+        ),
+        'description' => array(
+          'description' => 'A description of the file.',
+          'type' => 'text',
+          'not null' => FALSE,
+        ),
+      );
+
+      $indexes = array(
+        'fid' => array('fid'),
+      );
+
+      $foreign_keys = array(
+        'fid' => array(
+          'table' => 'file_managed',
+          'columns' => array('fid' => 'fid'),
+        ),
+      );
+      break;
+  }
+
   return array(
-    'columns' => array(
-      'js' => array(
-        'description' => 'Snippet of javascript',
-        'type' => 'text',
-        'size' => 'big',
-        'not null' => FALSE,
-      ),
-      'scope' => array(
-        'description' => 'The placement of this script on the page. 0 = header, 1 = footer.',
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-    ),
+    'columns' => $columns,
+    'indexes' => $indexes,
+    'foreign keys' => $foreign_keys,
   );
 }

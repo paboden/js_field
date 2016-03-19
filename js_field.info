@@ -1,4 +1,7 @@
 name = Javascript Field
-description = Provides a Javascript input field for inputing custom javascript.
+description = Provides a JavaScript input field for inputing custom javaScript snippets and attaching javaScript files.
 core = 7.x
+package = Field
+
 dependencies[] = field
+dependencies[] = file

@@ -20,27 +20,127 @@ function js_field_permission() {
  */
 function js_field_field_info() {
   return array(
+    // JavaScript snippet field information
     'js_field' => array(
-      'label' => t('Javascript'),
-      'description' => t('This field stores javascript and scope information in the database.'),
+      'label' => t('JavaScript'),
+      'description' => t('This field stores javaScript and scope information in the database.'),
       'default_widget' => 'js_field',
       'default_formatter' => 'js_field',
     ),
+    // JavaScript file field information
+    'js_file' => array(
+      'label' => t("JavaScript file"),
+      'description' => t("This field stores a JavaScript file and scope/description information."),
+      'settings' => array(
+        'uri_scheme' => variable_get('file_default_scheme', 'public'),
+      ),
+      'instance_settings' => array(
+        'file_directory' => 'js-files',
+        'max_filesize' => '',
+        'description_field' => 0,
+      ),
+      'default_widget' => 'js_file',
+      'default_formatter' => 'js_file',
+    ),
   );
 }
+
+/**
+ * Implements hook_field_settings_form().
+ */
+function js_field_field_settings_form($field, $instance, $has_data) {
+  $type = $field['type'];
+  $defaults = field_info_field_settings($field['type']);
+  $settings = array_merge($defaults, $field['settings']);
+
+  $form = array();
+
+  if ($type == 'js_file') {
+    $scheme_options = array();
+    foreach (file_get_stream_wrappers(STREAM_WRAPPERS_WRITE_VISIBLE) as $scheme => $stream_wrapper) {
+      $scheme_options[$scheme] = $stream_wrapper['name'];
+    }
+    $form['uri_scheme'] = array(
+      '#type' => 'radios',
+      '#title' => t('Upload destination'),
+      '#options' => $scheme_options,
+      '#default_value' => $settings['uri_scheme'],
+      '#description' => t('Select where the final files should be stored. Private file storage has significantly more overhead than public files, but allows restricted access to files within this field. It is recommended to store JS files in the private directory, and have the private directory outside of the drupal directory.'),
+      '#disabled' => $has_data,
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Implements hook_field_instance_settings_form().
+ */
+function js_field_field_instance_settings_form($field, $instance) {
+  $type = $field['type'];
+  $settings = $instance['settings'];
+
+  $form = array();
+
+  if ($type == 'js_file') {
+    $form['file_directory'] = array(
+      '#type' => 'textfield',
+      '#title' => t('File directory'),
+      '#default_value' => $settings['file_directory'],
+      '#description' => t('Optional subdirectory within the upload destination where files will be stored. Do not include preceding or trailing slashes.'),
+      '#element_validate' => array('_file_generic_settings_file_directory_validate'),
+      '#weight' => 3,
+    );
+
+    $form['max_filesize'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Maximum upload size'),
+      '#default_value' => $settings['max_filesize'],
+      '#description' => t('Enter a value like "512" (bytes), "80 KB" (kilobytes) or "50 MB" (megabytes) in order to restrict the allowed file size. If left empty the file sizes will be limited only by PHP\'s maximum post and file upload sizes (current limit <strong>%limit</strong>).', array('%limit' => format_size(file_upload_max_size()))),
+      '#size' => 10,
+      '#element_validate' => array('_file_generic_settings_max_filesize'),
+      '#weight' => 5,
+    );
+
+    $form['description_field'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable <em>Description</em> field'),
+      '#default_value' => isset($settings['description_field']) ? $settings['description_field'] : '',
+      '#description' => t('The description field allows users to enter a description about the uploaded file.'),
+      '#parents' => array('instance', 'settings', 'description_field'),
+      '#weight' => 11,
+    );
+  }
+
+  return $form;
+}
+
 
 /**
  * Implements hook_field_widget_info().
  */
 function js_field_field_widget_info() {
   return array(
-    'js_field_textfield' => array(
-      'label' => t('Javascript snippet'),
+    // JavaScript Snippet widget information
+    'js_field' => array(
+      'label' => t('JavaScript snippet'),
       'field types' => array('js_field'),
       'settings' => array(
         'js_field_editor_theme' => 'solarized_dark',
       ),
       'weight' => 0,
+    ),
+    // JavaScript file widget information
+    'js_file' => array(
+      'label' => t('JavaScript file'),
+      'field types' => array('js_file'),
+      'settings' => array(
+        'progress_indicator' => 'throbber',
+      ),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_CUSTOM,
+        'default value' => FIELD_BEHAVIOR_NONE,
+      ),
     ),
   );
 }
@@ -49,16 +149,36 @@ function js_field_field_widget_info() {
  * Implements hook_field_widget_settings_form().
  */
 function js_field_field_widget_settings_form($field, $instance) {
+  $type = $field['type'];
   $widget = $instance['widget'];
   $settings = $widget['settings'];
 
-  $element['js_field_editor_theme'] = array(
-    '#type' => 'select',
-    '#options' => _js_field_list_of_editor_themes(),
-    '#title' => t('Select editor theme'),
-    '#description' => t("Select the editor's theme style for the javascript field"),
-    '#default_value' => isset($settings['js_field_editor_theme']) ? $settings['js_field_editor_theme'] : 'solarized_dark',
-  );
+  $element = array();
+
+  if ($type == 'js_field') {
+    $element['js_field_editor_theme'] = array(
+      '#type' => 'select',
+      '#options' => _js_field_list_of_editor_themes(),
+      '#title' => t('Select editor theme'),
+      '#description' => t("Select the editor's theme style for the javaScript field"),
+      '#default_value' => isset($settings['js_field_editor_theme']) ? $settings['js_field_editor_theme'] : 'solarized_dark',
+    );
+  }
+
+  if ($type == 'js_file') {
+    $form['progress_indicator'] = array(
+      '#type' => 'radios',
+      '#title' => t('Progress indicator'),
+      '#options' => array(
+        'throbber' => t('Throbber'),
+        'bar' => t('Bar with progress meter'),
+      ),
+      '#default_value' => $settings['progress_indicator'],
+      '#description' => t('The throbber display does not show the status of uploads but takes up less space. The progress bar is helpful for monitoring progress on large uploads.'),
+      '#weight' => 16,
+      '#access' => file_progress_implementation(),
+    );
+  }
 
   return $element;
 }
@@ -67,65 +187,298 @@ function js_field_field_widget_settings_form($field, $instance) {
  * Implements hook_field_widget_form().
  */
 function js_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $type = $field['type'];
   $widget = $instance['widget'];
   $settings = $widget['settings'];
 
-  // Defaults
-  $defaults = array(
-    'js' => '',
-    'scope' => 'header',
+  // For the JavaScript textarea/snippet field, the entire widget form is completely
+  // built here in this function, unlike the JS file widget.
+  if ($type == 'js_field') {
+    // Defaults
+    $defaults = array(
+      'js' => '',
+      'scope' => 0,
+    );
+
+    // Bring in the javascript that sets the ace editor and sets the editor theme.
+    if (isset($settings['js_field_editor_theme'])) {
+      $editor_theme = $settings['js_field_editor_theme'];
+      if ($editor_theme !== 'none') {
+        drupal_add_js('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', array('type' => 'external', 'scope' => 'header', 'group' => JS_THEME, 'every_page' => TRUE, 'weight' => -1,));
+        drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
+      }
+    }
+
+    // If only one item, place it in a fieldset to keep it organized.
+    if ($field['cardinality'] == 1) {
+      $element['#type'] = 'fieldset';
+    }
+
+    // Items specific to snippet widget.
+    $element['js'] = array(
+      '#type' => 'textarea',
+      '#title' => t('JavaScript snippet'),
+      '#row' => 10,
+      '#attributes' => array(
+        'data-ace-editor-js' => 'data-ace-editor-js',
+        'data-ace-editor-js-theme' => $editor_theme,
+      ),
+      '#default_value' => isset($items[$delta]['js']) ? ($items[$delta]['js']) : $defaults['js'],
+      '#description' => t('Do not add &lt;script&gt; tags'),
+    );
+
+    // Basic javascript scope defaults.
+    $options = array(
+      0 => t('Header'),
+      1 => t('Footer'),
+    );
+
+    $element['scope'] = array(
+      '#type' => 'select',
+      '#options' => $options,
+      '#title' => t('Scope placement'),
+      '#description' => t('Place this javascript in the header or footer of the page.'),
+      '#default_value' => isset($items[$delta]['scope']) ? $items[$delta]['scope'] : $defaults['scope'],
+    );
+  }
+
+  // The js file widget begins here, and includes construction from process and
+  // value widget functions.
+  if ($type == 'js_file') {
+    $defaults = array(
+      'fid' => 0,
+      'scope' => 0,
+      'description' => '',
+    );
+
+    // Load the items for form rebuilds from the field state as they might not be
+    // in $form_state['values'] because of validation limitations. Also, they are
+    // only passed in as $items when editing existing entities.
+    $field_state = field_form_get_state($element['#field_parents'], $field['field_name'], $langcode, $form_state);
+    if (isset($field_state['items'])) {
+      $items = $field_state['items'];
+    }
+
+    // Essentially we use the managed_file type, extended with some enhancements.
+    $element_info = element_info('managed_file');
+    $element += array(
+      '#type' => 'managed_file',
+      '#upload_location' => file_field_widget_uri($field, $instance),
+      '#upload_validators' => js_field_field_widget_upload_validators($field, $instance),
+      '#value_callback' => 'js_field_field_widget_value',
+      '#process' => array_merge($element_info['#process'], array('js_field_field_widget_process')),
+      '#progress_indicator' => $settings['progress_indicator'],
+      // Allows this field to return an array instead of a single value.
+      '#extended' => TRUE,
+    );
+
+    if ($field['cardinality'] == 1) {
+
+      // Set the default value.
+      $element['#default_value'] = !empty($items) ? $items[0] : $defaults;
+
+      // If there's only one field, return it as delta 0.
+      if (empty($element['#default_value']['fid'])) {
+        $element['#description'] = theme('file_upload_help', array('description' => $element['#description'], 'upload_validators' => $element['#upload_validators']));
+      }
+
+      $elements = array($element);
+    }
+    else {
+
+      // If there are multiple values, add an element for each existing one.
+      foreach ($items as $item) {
+        $elements[$delta] = $element;
+        $elements[$delta]['#default_value'] = $item;
+        $elements[$delta]['#weight'] = $delta;
+        $delta++;
+      }
+
+      // And then add one more empty row for new uploads except when this is a
+      // programmed form as it is not necessary.
+      if (($field['cardinality'] == FIELD_CARDINALITY_UNLIMITED || $delta < $field['cardinality']) && empty($form_state['programmed'])) {
+        $elements[$delta] = $element;
+        $elements[$delta]['#default_value'] = $defaults;
+        $elements[$delta]['#weight'] = $delta;
+        $elements[$delta]['#required'] = ($element['#required'] && $delta == 0);
+      }
+
+      // The group of elements all-together need some extra functionality
+      // after building up the full list (like draggable table rows).
+      $elements['#file_upload_delta'] = $delta;
+      $elements['#theme'] = 'file_widget_multiple';
+      $elements['#theme_wrappers'] = array('fieldset');
+      $elements['#process'] = array('js_field_field_widget_process_multiple');
+      $elements['#title'] = $element['#title'];
+      $elements['#description'] = $element['#description'];
+      $elements['#field_name'] = $element['#field_name'];
+      $elements['#language'] = $element['#language'];
+      $elements['#display_field'] = TRUE;
+
+      // Add some properties that will eventually be added to the file upload
+      // field. These are added here so that they may be referenced easily through
+      // a hook_form_alter().
+      $elements['#file_upload_title'] = t('Add a new file');
+      $elements['#file_upload_description'] = theme('file_upload_help', array('description' => '', 'upload_validators' => $elements[0]['#upload_validators']));
+    }
+
+    return $elements;
+  }
+
+  return $element;
+}
+
+/**
+ * The #value_callback for the file_generic field element.
+ */
+function js_field_field_widget_value($element, $input = FALSE, $form_state) {
+
+  // We depend on the managed file element to handle uploads.
+  $return = file_managed_file_value($element, $input, $form_state);
+
+  // Ensure that all the required properties are returned even if empty.
+  $return += array(
+    'fid' => 0,
+    'scope' => 0,
+    'description' => '',
   );
 
-  // Bring in the javascript that sets the ace editor and sets the editor theme.
-  if (isset($settings['js_field_editor_theme'])) {
-    $editor_theme = $settings['js_field_editor_theme'];
-    if ($editor_theme !== 'none') {
-      drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
-      drupal_add_js(array('js_field' => array('editorTheme' => $editor_theme)), 'setting');
+  return $return;
+}
+
+/**
+ * Retrieves the upload validators for a javascript file field.
+ *
+ * @param $field
+ *   A field array.
+ *
+ * @return array
+ *   An array suitable for passing to file_save_upload() or the file field
+ *   element's '#upload_validators' property.
+ */
+function js_field_field_widget_upload_validators($field, $instance) {
+  $validators = array();
+  // Cap the upload size according to the PHP limit.
+  $max_filesize = parse_size(file_upload_max_size());
+  if (!empty($instance['settings']['max_filesize']) && parse_size($instance['settings']['max_filesize']) < $max_filesize) {
+    $max_filesize = parse_size($instance['settings']['max_filesize']);
+  }
+  // There is always a file size limit due to the PHP server limit.
+  $validators['file_validate_size'] = array($max_filesize);
+  // Limit extensions to only '*.js' files.
+  $validators['file_validate_extensions'] = array('js');
+
+  return $validators;
+}
+/**
+ * An element #process callback for the file_generic field type.
+ *
+ * Expands the file_generic type to include the description and display fields.
+ */
+function js_field_field_widget_process($element, &$form_state, $form) {
+  $item = $element['#value'];
+  $item['fid'] = $element['fid']['#value'];
+
+  $field = field_widget_field($element, $form_state);
+  $instance = field_widget_instance($element, $form_state);
+
+  $defaults = array(
+    'fid' => 0,
+    'scope' => 0,
+    'description' => '',
+  );
+
+  $element['#theme'] = 'file_widget';
+
+  if ($item['fid']) {
+
+    // Basic javascript scope defaults.
+    $options = array(
+      0 => t('Header'),
+      1 => t('Footer'),
+    );
+
+    $element['scope'] = array(
+      '#type' => 'select',
+      '#options' => $options,
+      '#title' => t('Scope placement'),
+      '#description' => t('Place this javascript in the header or footer of the page.'),
+      '#default_value' => isset($item['scope']) ? $item['scope'] : $defaults['scope'],
+    );
+
+    if (!empty($instance['settings']['description_field'])) {
+      // Add the description field if enabled.
+      $element['description'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Description'),
+        '#value' => isset($item['description']) ? $item['description'] : '',
+        '#maxlength' => 255,
+        '#description' => t('The description may be used as the label of the link to the file.'),
+      );
     }
   }
 
-  // If only one item, place it in a fieldset to keep it organized.
-  if ($field['cardinality'] == 1) {
-    $element['#type'] = 'fieldset';
+  // Adjust the Ajax settings so that on upload and remove of any individual
+  // file, the entire group of file fields is updated together.
+  if ($field['cardinality'] != 1) {
+    $parents = array_slice($element['#array_parents'], 0, -1);
+    $new_path = 'file/ajax/' . implode('/', $parents) . '/' . $form['form_build_id']['#value'];
+    $field_element = drupal_array_get_nested_value($form, $parents);
+    $new_wrapper = $field_element['#id'] . '-ajax-wrapper';
+    foreach (element_children($element) as $key) {
+      if (isset($element[$key]['#ajax'])) {
+        $element[$key]['#ajax']['path'] = $new_path;
+        $element[$key]['#ajax']['wrapper'] = $new_wrapper;
+      }
+    }
+    unset($element['#prefix'], $element['#suffix']);
   }
 
-  // Items specific to snippet widget.
-  $element['js'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Javascript snippet'),
-    '#row' => 10,
-    '#attributes' => array(
-      'data-ace-editor-js' => 'data-ace-editor-js',
-    ),
-    '#default_value' => isset($items[$delta]['js']) ? ($items[$delta]['js']) : $defaults['js'],
-    '#description' => t('Do not add &lt;script&gt; tags'),
-  );
-
-
-  // Basic html style tag media defaults.
-  $options = array(
-    0 => t('Header'),
-    1 => t('Footer'),
-  );
-
-  $element['scope'] = array(
-    '#type' => 'select',
-    '#options' => $options,
-    '#title' => t('Scope placement'),
-    '#description' => t('Place this javascript in the header or footer of the page.'),
-    '#default_value' => isset($items[$delta]['scope']) ? $items[$delta]['scope'] : $defaults['scope'],
-  );
+  // Add another submit handler to the upload and remove buttons, to implement
+  // functionality needed by the field widget. This submit handler, along with
+  // the rebuild logic in file_field_widget_form() requires the entire field,
+  // not just the individual item, to be valid.
+  foreach (array('upload_button', 'remove_button') as $key) {
+    $element[$key]['#submit'][] = 'js_field_field_widget_submit';
+    $element[$key]['#limit_validation_errors'] = array(array_slice($element['#parents'], 0, -1));
+  }
 
   return $element;
+}
+
+/**
+ * An element #process callback for a group of js_file fields.
+ *
+ * Adds the weight field to each row so it can be ordered and adds a new Ajax
+ * wrapper around the entire group so it can be replaced all at once.
+ */
+function js_field_field_widget_process_multiple($element, &$form_state, $form) {
+  return file_field_widget_process_multiple($element, $form_state, $form);
+}
+
+/**
+ * Form submission handler for upload/remove button of js_field_field_widget_form().
+ *
+ * This runs in addition to and after file_managed_file_submit().
+ *
+ * @see file_managed_file_submit()
+ * @see file_field_widget_form()
+ * @see file_field_widget_process()
+ */
+function js_field_field_widget_submit($form, &$form_state) {
+  file_field_widget_submit($form, $form_state);
 }
 
 /**
  * Implementation of hook_field_is_empty().
  */
 function js_field_field_is_empty($item, $field) {
-  if (empty($item['js'])) {
-    return TRUE;
+
+  switch($field['type']) {
+    case 'js_field':
+      return empty($item['js']);
+    case 'js_file':
+      return empty($item['fid']);
   }
 
   return FALSE;
@@ -153,8 +506,9 @@ function js_field_field_validate($entity_type, $entity, $field, $instance, $lang
  */
 function js_field_field_formatter_info() {
   return array(
+    // JavaScript Field formatters information.
     'js_field' => array(
-      'label' => t('Javascript: Embedded'),
+      'label' => t('JavaScript: Functioning'),
       'field types' => array('js_field'),
       'settings' => array(
         'js_field_debug_message' => TRUE,
@@ -171,6 +525,33 @@ function js_field_field_formatter_info() {
         'js_field_display_theme' => 'solarized_dark',
       ),
     ),
+    // js File formatters information.
+    'js_file' => array(
+      'label' => t('Javascript File : Functioning'),
+      'field types' => array('js_file'),
+      'settings' => array(
+        'js_field_debug_message' => TRUE,
+      ),
+    ),
+    'js_file_url' => array(
+      'label' => t('Javascript File : File URL'),
+      'field types' => array('js_file'),
+    ),
+    'js_file_link' => array(
+      'label' => t('Javascript File : Link to file'),
+      'field types' => array('js_file'),
+    ),
+    'js_file_plain' => array(
+      'label' => t('Javascript File : Plain'),
+      'field types' => array('js_file'),
+    ),
+    'js_file_styled' => array(
+      'label' => t('Javascript File : Styled'),
+      'field types' => array('js_file'),
+      'settings' => array(
+        'js_field_display_theme' => 'solarized_dark',
+      ),
+    ),
   );
 }
 
@@ -183,24 +564,29 @@ function js_field_field_formatter_settings_form($field, $instance, $view_mode, $
 
   $element = array();
 
-  if ($display['type'] == 'js_field_styled') {
-    $element['js_field_display_theme'] = array(
-      '#type' => 'select',
-      '#options' => _js_field_list_of_editor_themes(),
-      '#title' => t('Select display theme'),
-      '#description' => t("Select the theme style for the display of this javascript field"),
-      '#default_value' => isset($settings['js_field_display_theme']) ? $settings['js_field_display_theme'] : 'solarized_dark',
-    );
-  }
+  switch ($display['type']) {
+    case 'js_field_styled':
+    case 'js_file_styled':
+      // Set up our select list of applicable editor themes.
+      $element['js_field_display_theme'] = array(
+        '#type' => 'select',
+        '#options' => _js_field_list_of_editor_themes(),
+        '#title' => t('Select display theme'),
+        '#description' => t("Select the theme style for the display of this js field"),
+        '#default_value' => isset($settings['js_field_display_theme']) ? $settings['js_field_display_theme'] : 'solarized_dark',
+      );
+      break;
 
-  // Set up our checkbox to enable/disable javascript field debugging.
-  if ($display['type'] == 'js_field') {
-    $element['js_field_debug_message'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Display dev/debug message'),
-      '#description' => t("This will display a message notifying users that this page has additional javascript coming from a js field.  Users must have permission to view dev/debug messages. "),
-      '#default_value' => isset($settings['js_field_debug_message']) ? $settings['js_field_debug_message'] : TRUE,
-    );
+    case 'js_field':
+    case 'js_file':
+      // Set up our checkbox to enable/disable js field debugging.
+      $element['js_field_debug_message'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Display dev/debug message'),
+        '#description' => t("This will display a message notifying users that this page has additional javaScript is coming from a js field.  Users must have permission to view dev/debug messages. "),
+        '#default_value' => isset($settings['js_field_debug_message']) ? $settings['js_field_debug_message'] : TRUE,
+      );
+      break;
   }
 
   return $element;
@@ -215,14 +601,19 @@ function js_field_field_formatter_settings_summary($field, $instance, $view_mode
 
   $summary = '';
 
-  if ($display['type'] == 'js_field_styled') {
-    $summary = t('Display theme: @theme', array('@theme' => $settings['js_field_display_theme']));
-  }
+  switch ($display['type']) {
+    case 'js_field_styled':
+    case 'js_file_styled':
+      // Summary of our styled editor theme.
+      $summary = t('Display theme: @theme', array('@theme' => $settings['js_field_display_theme']));
+      break;
 
-  // Summary of our debug status.
-  if ($display['type'] == 'js_field') {
-    $status = $settings['js_field_debug_message'] == TRUE ? t('Enabled') : t('Disabled');
-    $summary = t('Debug message: @status', array('@status' => $status));
+    case 'js_field':
+    case 'js_file':
+      // Summary of our debug status.
+      $status = $settings['js_field_debug_message'] == TRUE ? t('Enabled') : t('Disabled');
+      $summary = t('Debug message: @status', array('@status' => $status));
+      break;
   }
 
   return $summary;
@@ -236,14 +627,16 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
   $element = array();
 
   switch ($display['type']) {
+    case 'js_file':
     case 'js_field':
       // Auto kill the embedded javascript display if entity is being viewed
       // from an admin page. This is to try to preserve sanity. If this field is
-      // needed to work for admin display, than you need to rethink what you are
-      // doing. :)
+      // needed to work for admin display, than realistically you need to
+      // rethink what you are doing. :) Discovered on views admin pages that if
+      // looking at rendered types with functioning javascript formatter, it was
+      // processing that javascript.
       $page_is_admin = path_is_admin(current_path());
       if (!$page_is_admin) {
-
         //
         // Display debug messaging if enabled and to users with permission.
         // We want dev's to have an easy time figuring out where the odd js
@@ -253,11 +646,18 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
           drupal_set_message($debug_message);
         }
 
-        foreach ($items as $key => $value) {
-          // Set the data as the js content.
-          $data = filter_xss($value['js']);
+        foreach ($items as $delta => $item) {
           // Set the scope (header or footer).
-          $scope = $value['scope'] == 0 ? 'header' : 'footer';
+          $scope = $item['scope'] == 0 ? 'header' : 'footer';
+
+          // Set the data as the js content.
+          $content = _js_field_get_content($item);
+          $data = filter_xss($content);
+          // Set up the basic options. We use inline js for 2 reasons.
+          // 1) So that both snippet and file functioning js are output
+          // in the same manner.
+          // 2) We can run the content through more strict filtering and do
+          // our best to keep the content as secure as possible.
           $options = array(
             'type' => 'inline',
             'scope' => $scope,
@@ -272,43 +672,91 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
         }
       }
       break;
+    case 'js_file_plain':
     case 'js_field_plain':
-      foreach ($items as $key => $value) {
-        $element[$key] = array(
+      foreach ($items as $delta => $item) {
+        $content = _js_field_get_content($item);
+        $element[$delta] = array(
           '#type' => 'markup',
-          '#markup' => '<small><pre>' . check_plain($value['js']) . '</pre></small>',
+          '#prefix' => '<pre>',
+          '#markup' => filter_xss($content),
+          '#suffix' => '</pre>',
         );
       }
       break;
+    case 'js_file_styled':
     case 'js_field_styled':
-      $instance_settings = $instance['widget']['settings'];
-      $editor_theme = $instance_settings['js_field_editor_theme'];
-      if ($editor_theme !== 'none') {
-        drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field_formatter_display.js');
-        drupal_add_js(array('js_field' => array('readOnlyTheme' => $editor_theme)), 'setting');
-        foreach ($items as $key => $value) {
-          $element[$key] = array(
+      $display_theme = $settings['js_field_display_theme'];
+      if ($display_theme != 'none') {
+        drupal_add_js('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', array('type' => 'external', 'scope' => 'header', 'group' => JS_THEME, 'every_page' => TRUE, 'weight' => -1,));
+        drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
+        foreach ($items as $delta => $item) {
+          $content = _js_field_get_content($item);
+          $element[$delta] = array(
             '#type' => 'textarea',
-            '#value' => filter_xss($value['js']),
+            '#value' => filter_xss($content),
             '#row' => 10,
             '#attributes' => array(
-              'data-ace-editor-js' => 'data-ace-editor-js',
+              'data-ace-editor-js-readonly' => 'data-ace-editor-js-readonly',
+              'data-ace-editor-js-theme' => $display_theme,
             ),
           );
         }
       }
       else {
-        foreach ($items as $key => $value) {
-          $element[$key] = array(
+        foreach ($items as $delta => $item) {
+          $content = _js_field_get_content($item);
+          $element[$delta] = array(
             '#type' => 'markup',
-            '#markup' => '<small><pre>' . check_plain($value['js']) . '</pre></small>',
+            '#prefix' => '<pre>',
+            '#value' => filter_xss($content),
+            '#suffix' => '</pre>',
           );
         }
+      }
+      break;
+
+    case 'js_file_url':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array('#markup' => empty($item['uri']) ? '' : file_create_url($item['uri']));
+      }
+      break;
+
+    case 'js_file_link':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array(
+          '#theme' => 'file_link',
+          '#file' => (object) $item,
+        );
       }
       break;
   }
 
   return $element;
+}
+
+/**
+ * Helper function to get content for the js field. Checks if its a file or
+ * snippet field
+ *
+ * @param $item
+ *        array: data and value of the individual field item.
+ *
+ * @return string
+ */
+function _js_field_get_content($item) {
+  // If its the js_file field, the uri will be set. If its a file, we
+  // retrieve the contents of that file, so we can return it as inline js.
+  $content = '';
+
+  if (isset($item['uri'])) {
+    $content = file_get_contents($item['uri']);
+  }
+  elseif (isset($item['js'])) {
+    $content = $item['js'];
+  }
+
+  return $content;
 }
 
 /**
@@ -365,4 +813,67 @@ function _js_field_list_of_editor_themes() {
   drupal_alter('js_field_list_of_editor_themes', $options);
 
   return $options;
+}
+
+/**
+ * Implements hook_field_load().
+ */
+function js_field_field_load($entity_type, $entities, $field, $instances, $langcode, &$items, $age) {
+  if ($field['type'] == 'js_file') {
+    file_field_load($entity_type, $entities, $field, $instances, $langcode, $items, $age);
+  }
+}
+
+/**
+ * Implements hook_field_prepare_view().
+ */
+function js_field_field_prepare_view($entity_type, $entities, $field, $instances, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_prepare_view($entity_type, $entities, $field, $instances, $langcode, $items);
+  }
+}
+
+/**
+ * Implements hook_field_presave().
+ */
+function js_field_field_presave($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_presave($entity_type, $entity, $field, $instance, $langcode, $items);
+  }
+}
+
+/**
+ * Implements hook_field_insert().
+ */
+function js_field_field_insert($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_insert($entity_type, $entity, $field, $instance, $langcode, $items);
+  }
+}
+
+/**
+ * Implements hook_field_update().
+ */
+function js_field_field_update($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_update($entity_type, $entity, $field, $instance, $langcode, $items);
+  }
+}
+
+/**
+ * Implements hook_field_delete().
+ */
+function js_field_field_delete($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_delete($entity_type, $entity, $field, $instance, $langcode, $items);
+  }
+}
+
+/**
+ * Implements hook_field_delete_revision().
+ */
+function js_field_field_delete_revision($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'js_file') {
+    file_field_delete_revision($entity_type, $entity, $field, $instance, $langcode, $items);
+  }
 }
