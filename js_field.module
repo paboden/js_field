@@ -550,6 +550,7 @@ function js_field_field_formatter_info() {
       'field types' => array('js_file'),
       'settings' => array(
         'js_field_display_theme' => 'solarized_dark',
+        'js_file_display_name' => TRUE,
       ),
     ),
   );
@@ -566,6 +567,16 @@ function js_field_field_formatter_settings_form($field, $instance, $view_mode, $
 
   switch ($display['type']) {
     case 'js_field_styled':
+      // Set up our select list of applicable editor themes.
+      $element['js_field_display_theme'] = array(
+        '#type' => 'select',
+        '#options' => _js_field_list_of_editor_themes(),
+        '#title' => t('Select display theme'),
+        '#description' => t("Select the theme style for the display of this js field"),
+        '#default_value' => isset($settings['js_field_display_theme']) ? $settings['js_field_display_theme'] : 'solarized_dark',
+      );
+      break;
+
     case 'js_file_styled':
       // Set up our select list of applicable editor themes.
       $element['js_field_display_theme'] = array(
@@ -574,6 +585,14 @@ function js_field_field_formatter_settings_form($field, $instance, $view_mode, $
         '#title' => t('Select display theme'),
         '#description' => t("Select the theme style for the display of this js field"),
         '#default_value' => isset($settings['js_field_display_theme']) ? $settings['js_field_display_theme'] : 'solarized_dark',
+      );
+      // Decide if we want to display a linked name of the file above the
+      // styled output.
+      $element['js_file_display_name'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Display file name'),
+        '#description' => t("This will display the name (linked) of the file above the styled output of its contents."),
+        '#default_value' => isset($settings['js_file_display_name']) ? $settings['js_file_display_name'] : TRUE,
       );
       break;
 
@@ -691,6 +710,12 @@ function js_field_field_formatter_view($entity_type, $entity, $field, $instance,
         drupal_add_js('//cdn.jsdelivr.net/ace/1.2.3/noconflict/ace.js', array('type' => 'external', 'scope' => 'header', 'group' => JS_THEME, 'every_page' => TRUE, 'weight' => -1,));
         drupal_add_js(drupal_get_path('module', 'js_field') . '/js/js_field.js');
         foreach ($items as $delta => $item) {
+          if ($display['type'] == 'js_file_styled' && ($settings['js_file_display_name'] == TRUE)) {
+            $element[$delta]['file_link'] = array(
+              '#theme' => 'file_link',
+              '#file' => (object) $item,
+            );
+          }
           $content = _js_field_get_content($item, $entity_type, $field, $instance);
           $element[$delta] = array(
             '#type' => 'textarea',
